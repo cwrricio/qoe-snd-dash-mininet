@@ -1,0 +1,2 @@
+# Não há dependências Python via pip nesta etapa.
+# O controlador POX é instalado via git pelo install.sh.
