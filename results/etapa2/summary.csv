@@ -1,0 +1,8 @@
+scenario,description,rtt_avg_ms,loss_pct,throughput_mbps,startup_time_s,rebuffer_events,rebuffer_time_s,avg_bitrate_kbps,bitrate_switches,mean_throughput_mbps
+baseline,Sem degradação (referência),0.128,0.0,95.1,0.211,0,0.0,1414.3,1,90.102
+banda_baixa,Banda limitada a 3 Mbps,0.167,0.0,95.4,6.393,0,0.0,1414.3,1,2.868
+atraso_alto,Atraso de 150 ms,150.491,0.0,70.3,3.657,0,0.0,1414.3,1,7.839
+jitter,Atraso 50 ms com jitter de 30 ms,50.505,0.0,90.8,10.276,0,0.0,300.0,0,0.598
+perda,Perda de pacotes de 5%,0.455,10.0,95.4,1.136,0,0.0,1414.3,1,24.938
+congestionamento,Link de 10 Mbps com 2 fluxos iperf concorrentes,19.831,0.0,2.54,2.174,0,0.0,1414.3,1,8.984
+combinado,3 Mbps + 100 ms + 2% de perda,102.902,10.0,78.7,5.561,0,0.0,1064.3,9,1.535

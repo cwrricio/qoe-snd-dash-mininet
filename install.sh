@@ -49,7 +49,8 @@ sudo apt-get install -y \
     tcpdump \
     net-tools \
     curl \
-    make
+    make \
+    python3-matplotlib
 
 echo "[3/7] Configurando Open vSwitch..."
 sudo systemctl enable openvswitch-switch

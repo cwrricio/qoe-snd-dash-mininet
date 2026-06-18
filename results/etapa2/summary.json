@@ -1,0 +1,184 @@
+[
+  {
+    "scenario": "baseline",
+    "description": "Sem degradação (referência)",
+    "net": {
+      "rtt_avg_ms": 0.128,
+      "loss_pct": 0.0,
+      "throughput_mbps": 95.1
+    },
+    "qoe": {
+      "segments_played": 14,
+      "startup_time_s": 0.211,
+      "rebuffer_events": 0,
+      "rebuffer_time_s": 0.0,
+      "avg_bitrate_kbps": 1414.3,
+      "bitrate_switches": 1,
+      "mean_throughput_mbps": 90.102,
+      "total_bytes": 24656584,
+      "wall_time_s": 2.192,
+      "representations_kbps": [
+        300.0,
+        800.0,
+        1500.0
+      ],
+      "mpd_url": "http://10.0.0.1:8000/output.mpd"
+    }
+  },
+  {
+    "scenario": "banda_baixa",
+    "description": "Banda limitada a 3 Mbps",
+    "net": {
+      "rtt_avg_ms": 0.167,
+      "loss_pct": 0.0,
+      "throughput_mbps": 95.4
+    },
+    "qoe": {
+      "segments_played": 14,
+      "startup_time_s": 6.393,
+      "rebuffer_events": 0,
+      "rebuffer_time_s": 0.0,
+      "avg_bitrate_kbps": 1414.3,
+      "bitrate_switches": 1,
+      "mean_throughput_mbps": 2.868,
+      "total_bytes": 24656584,
+      "wall_time_s": 68.779,
+      "representations_kbps": [
+        300.0,
+        800.0,
+        1500.0
+      ],
+      "mpd_url": "http://10.0.0.1:8000/output.mpd"
+    }
+  },
+  {
+    "scenario": "atraso_alto",
+    "description": "Atraso de 150 ms",
+    "net": {
+      "rtt_avg_ms": 150.491,
+      "loss_pct": 0.0,
+      "throughput_mbps": 70.3
+    },
+    "qoe": {
+      "segments_played": 14,
+      "startup_time_s": 3.657,
+      "rebuffer_events": 0,
+      "rebuffer_time_s": 0.0,
+      "avg_bitrate_kbps": 1414.3,
+      "bitrate_switches": 1,
+      "mean_throughput_mbps": 7.839,
+      "total_bytes": 24656584,
+      "wall_time_s": 25.165,
+      "representations_kbps": [
+        300.0,
+        800.0,
+        1500.0
+      ],
+      "mpd_url": "http://10.0.0.1:8000/output.mpd"
+    }
+  },
+  {
+    "scenario": "jitter",
+    "description": "Atraso 50 ms com jitter de 30 ms",
+    "net": {
+      "rtt_avg_ms": 50.505,
+      "loss_pct": 0.0,
+      "throughput_mbps": 90.8
+    },
+    "qoe": {
+      "segments_played": 14,
+      "startup_time_s": 10.276,
+      "rebuffer_events": 0,
+      "rebuffer_time_s": 0.0,
+      "avg_bitrate_kbps": 300.0,
+      "bitrate_switches": 0,
+      "mean_throughput_mbps": 0.598,
+      "total_bytes": 5240294,
+      "wall_time_s": 70.061,
+      "representations_kbps": [
+        300.0,
+        800.0,
+        1500.0
+      ],
+      "mpd_url": "http://10.0.0.1:8000/output.mpd"
+    }
+  },
+  {
+    "scenario": "perda",
+    "description": "Perda de pacotes de 5%",
+    "net": {
+      "rtt_avg_ms": 0.455,
+      "loss_pct": 10.0,
+      "throughput_mbps": 95.4
+    },
+    "qoe": {
+      "segments_played": 14,
+      "startup_time_s": 1.136,
+      "rebuffer_events": 0,
+      "rebuffer_time_s": 0.0,
+      "avg_bitrate_kbps": 1414.3,
+      "bitrate_switches": 1,
+      "mean_throughput_mbps": 24.938,
+      "total_bytes": 24656584,
+      "wall_time_s": 7.912,
+      "representations_kbps": [
+        300.0,
+        800.0,
+        1500.0
+      ],
+      "mpd_url": "http://10.0.0.1:8000/output.mpd"
+    }
+  },
+  {
+    "scenario": "congestionamento",
+    "description": "Link de 10 Mbps com 2 fluxos iperf concorrentes",
+    "net": {
+      "rtt_avg_ms": 19.831,
+      "loss_pct": 0.0,
+      "throughput_mbps": 2.54
+    },
+    "qoe": {
+      "segments_played": 14,
+      "startup_time_s": 2.174,
+      "rebuffer_events": 0,
+      "rebuffer_time_s": 0.0,
+      "avg_bitrate_kbps": 1414.3,
+      "bitrate_switches": 1,
+      "mean_throughput_mbps": 8.984,
+      "total_bytes": 24656584,
+      "wall_time_s": 21.963,
+      "representations_kbps": [
+        300.0,
+        800.0,
+        1500.0
+      ],
+      "mpd_url": "http://10.0.0.1:8000/output.mpd"
+    }
+  },
+  {
+    "scenario": "combinado",
+    "description": "3 Mbps + 100 ms + 2% de perda",
+    "net": {
+      "rtt_avg_ms": 102.902,
+      "loss_pct": 10.0,
+      "throughput_mbps": 78.7
+    },
+    "qoe": {
+      "segments_played": 14,
+      "startup_time_s": 5.561,
+      "rebuffer_events": 0,
+      "rebuffer_time_s": 0.0,
+      "avg_bitrate_kbps": 1064.3,
+      "bitrate_switches": 9,
+      "mean_throughput_mbps": 1.535,
+      "total_bytes": 18853707,
+      "wall_time_s": 98.271,
+      "representations_kbps": [
+        300.0,
+        800.0,
+        1500.0
+      ],
+      "mpd_url": "http://10.0.0.1:8000/output.mpd"
+    }
+  }
+]

@@ -1,4 +1,4 @@
-.PHONY: install validate video controller topology capture clean
+.PHONY: install validate video controller topology capture etapa2 analyze test clean
 
 install:
 	chmod +x install.sh cleanup.sh scripts/*.sh
@@ -18,6 +18,20 @@ topology:
 
 capture:
 	sudo ./scripts/capture_traffic.sh s1-eth1
+
+# Etapa 2: roda todos os cenários (degradação + tráfego concorrente) e coleta QoE.
+# -B evita criar __pycache__ de propriedade do root (rodamos via sudo).
+etapa2:
+	sudo python3 -B experiments/run_etapa2.py
+
+# Etapa 2: consolida resultados em CSV e gera os gráficos.
+analyze:
+	python3 experiments/analyze.py
+
+# Testes (TDD). Não exigem root nem Mininet; os testes de integração com
+# ffmpeg são pulados automaticamente se não houver ffmpeg disponível.
+test:
+	python3 -m pytest tests/ -v
 
 clean:
 	./cleanup.sh

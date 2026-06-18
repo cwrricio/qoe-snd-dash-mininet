@@ -1,6 +1,6 @@
 # QoE SDN DASH Mininet
 
-Entrega da **Etapa 1** do Trabalho Final de Programabilidade de Infraestruturas de Rede.
+Entregas das **Etapas 1 e 2** do Trabalho Final de Programabilidade de Infraestruturas de Rede.
 
 Este repositório monta um ambiente experimental para **streaming adaptativo (MPEG-DASH)** sobre uma rede **SDN** emulada no **Mininet**, controlada por um controlador **POX** via **OpenFlow**.
 
@@ -17,6 +17,7 @@ Este repositório monta um ambiente experimental para **streaming adaptativo (MP
 - [Executar (controlador + topologia)](#executar-controlador--topologia)
 - [Testes, VLC e métricas](#testes-vlc-e-métricas)
 - [Captura de tráfego](#captura-de-tráfego)
+- [Etapa 2 — Indução de degradação e caracterização da QoE](#etapa-2--indução-de-degradação-e-caracterização-da-qoe)
 - [Resultados obtidos](#resultados-obtidos)
 - [Encerrar e limpar](#encerrar-e-limpar)
 - [Ordem resumida](#ordem-resumida)
@@ -61,21 +62,36 @@ O host `h1` executa o servidor HTTP com o conteúdo MPEG-DASH. Os hosts `h2`, `h
 ```text
 .
 ├── docs/
-│   └── README_VM.md
+│   ├── README_VM.md
+│   ├── relatorio_etapa1.md
+│   └── relatorio_etapa2.md
+├── experiments/
+│   ├── dash_client.py
+│   ├── netimpair.py
+│   ├── run_etapa2.py
+│   └── analyze.py
 ├── media/
 │   ├── input.mp4
 │   └── dash/
 ├── results/
 │   ├── iperf/
 │   ├── pcap/
-│   └── ping/
+│   ├── ping/
+│   └── etapa2/
 ├── scripts/
 │   ├── capture_traffic.sh
+│   ├── concurrent_traffic.sh
+│   ├── induce_degradation.sh
 │   ├── prepare_video.sh
 │   ├── run_metrics.sh
 │   ├── start_controller.sh
 │   ├── start_topology.sh
 │   └── validate_environment.sh
+├── tests/
+│   ├── test_dash_client.py
+│   ├── test_netimpair.py
+│   ├── test_analyze.py
+│   └── test_integration_streaming.py
 ├── tools/
 │   └── pox/
 ├── topology/
@@ -315,6 +331,88 @@ tcp.port == 8000
 icmp
 ```
 
+## Etapa 2 — Indução de degradação e caracterização da QoE
+
+A Etapa 2 submete o ambiente a cenários adversos de rede, mede o impacto na
+**QoE** do streaming e correlaciona métricas de rede com métricas de QoE.
+Detalhes e metodologia em [`docs/relatorio_etapa2.md`](docs/relatorio_etapa2.md).
+
+### Componentes
+
+```text
+experiments/
+├── dash_client.py    # cliente DASH headless que mede QoE (só stdlib)
+├── run_etapa2.py     # orquestra todos os cenários e coleta resultados
+└── analyze.py        # consolida CSV e gera gráficos
+scripts/
+├── induce_degradation.sh  # aplica tc netem/tbf manualmente (uso no CLI)
+└── concurrent_traffic.sh  # gera tráfego concorrente iperf (uso no CLI)
+```
+
+### Cenários
+
+`baseline`, `banda_baixa` (3 Mbps), `atraso_alto` (150 ms), `jitter` (50 ms ±
+30 ms), `perda` (5%), `congestionamento` (10 Mbps + 2 fluxos iperf) e
+`combinado` (3 Mbps + 100 ms + 2% perda).
+
+### Métricas de QoE
+
+Tempo de início, eventos e tempo de rebuffering, bitrate médio e trocas de
+bitrate — medidas pelo cliente DASH, que interpreta o `.mpd`, faz ABR por
+throughput e simula um buffer de reprodução.
+
+### Executar
+
+```bash
+make video      # gera o conteúdo DASH (se ainda não gerou)
+make etapa2     # roda todos os cenários (sobe a topologia automaticamente)
+make analyze    # gera results/etapa2/summary.csv e os gráficos em plots/
+```
+
+Para um cenário específico:
+
+```bash
+sudo python3 experiments/run_etapa2.py --only banda_baixa
+```
+
+> Por padrão usa o controlador de referência do OVS (1 comando). Para usar o
+> POX da Etapa 1: `make controller` em outro terminal e
+> `sudo python3 experiments/run_etapa2.py --controller remote`.
+
+### Saídas
+
+```text
+results/etapa2/summary.json   # resultado bruto consolidado
+results/etapa2/summary.csv    # tabela para o relatório
+results/etapa2/qoe/*.json     # QoE por cenário
+results/etapa2/net/*.txt      # ping/iperf por cenário
+results/etapa2/plots/*.png    # gráficos comparativos e de correlação
+```
+
+### Testes (TDD)
+
+A lógica da Etapa 2 (cliente DASH, construção dos comandos `tc`, parsing de
+`ping`/`iperf`, pipeline de análise) é coberta por testes automatizados que
+**não exigem root nem Mininet**:
+
+```bash
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+make test
+```
+
+São 36 testes, incluindo testes de **integração end-to-end** que geram DASH
+real com ffmpeg, sobem um servidor HTTP local (com banda limitada) e validam a
+QoE medida — pulados automaticamente se não houver ffmpeg disponível.
+
+### Uso manual da degradação (dentro do CLI do Mininet)
+
+```bash
+mininet> h1 bash scripts/induce_degradation.sh h1-eth0 --bw 3 --delay 100ms --loss 2
+mininet> h1 bash scripts/induce_degradation.sh h1-eth0 --clear
+mininet> h3 bash scripts/concurrent_traffic.sh 10.0.0.1 60 &
+```
+
 ## Resultados obtidos
 
 Durante a execução da Etapa 1, as evidências e resultados **podem** ser organizados nos diretórios:
@@ -376,19 +474,6 @@ Terminal 3:
 make capture
 ```
 
-## Evidências para a entrega
-
-Recomenda-se registrar:
-
-- print do `make validate`;
-- print do controlador POX em execução;
-- print da topologia Mininet iniciada;
-- print dos comandos `nodes`, `net`, `pingall`;
-- print do `curl` acessando `output.mpd`;
-- print do VLC reproduzindo o vídeo;
-- print dos testes `ping` e `iperf` (ou os arquivos salvos em `results/`);
-- arquivo `.pcap` gerado em `results/pcap/`.
-
 ## Notas e troubleshooting
 
 ### Importante: rode a topologia a partir da raiz do projeto
@@ -408,3 +493,15 @@ sudo python3 topo_dash.py
 ```
 
 Caso contrário, o Mininet pode não encontrar `media/dash`.
+
+### Permissão negada no `make analyze` ou nos testes
+
+Como o `make etapa2` roda via `sudo`, arquivos podem ser criados como **root**.
+O orquestrador já devolve a posse de `results/` ao seu usuário ao final, e usa
+`python3 -B` para não criar `__pycache__` como root. Se você rodou uma versão
+anterior e ainda houver arquivos do root, limpe uma única vez:
+
+```bash
+sudo chown -R $USER:$USER results/
+sudo rm -rf experiments/__pycache__ topology/__pycache__
+```

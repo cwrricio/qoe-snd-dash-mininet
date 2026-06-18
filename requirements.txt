@@ -1,2 +1,14 @@
-# Não há dependências Python via pip nesta etapa.
-# O controlador POX é instalado via git pelo install.sh.
+# O cliente DASH (experiments/dash_client.py) e o orquestrador
+# (experiments/run_etapa2.py) usam apenas a biblioteca padrão do Python.
+#
+# A análise/gráficos (experiments/analyze.py) precisa de matplotlib.
+# Na VM, o install.sh já instala via apt (python3-matplotlib).
+# Alternativamente, via pip:
+matplotlib>=3.5
+
+# --- Desenvolvimento/testes (opcional) ---
+# Testes unitários e de integração: make test
+pytest>=7.0
+# Fornece um binário de ffmpeg via pip para os testes de integração de
+# streaming quando não há ffmpeg de sistema (caso da máquina de desenvolvimento).
+imageio-ffmpeg>=0.4

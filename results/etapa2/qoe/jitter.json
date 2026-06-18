@@ -1,0 +1,17 @@
+{
+  "segments_played": 14,
+  "startup_time_s": 10.276,
+  "rebuffer_events": 0,
+  "rebuffer_time_s": 0.0,
+  "avg_bitrate_kbps": 300.0,
+  "bitrate_switches": 0,
+  "mean_throughput_mbps": 0.598,
+  "total_bytes": 5240294,
+  "wall_time_s": 70.061,
+  "representations_kbps": [
+    300.0,
+    800.0,
+    1500.0
+  ],
+  "mpd_url": "http://10.0.0.1:8000/output.mpd"
+}
