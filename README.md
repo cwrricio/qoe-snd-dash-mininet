@@ -1,6 +1,6 @@
 # QoE SDN DASH Mininet
 
-Entregas das **Etapas 1 e 2** do Trabalho Final de Programabilidade de Infraestruturas de Rede.
+Entregas das **Etapas 1, 2 e 3** do Trabalho Final de Programabilidade de Infraestruturas de Rede.
 
 Este repositório monta um ambiente experimental para **streaming adaptativo (MPEG-DASH)** sobre uma rede **SDN** emulada no **Mininet**, controlada por um controlador **POX** via **OpenFlow**.
 
@@ -18,6 +18,7 @@ Este repositório monta um ambiente experimental para **streaming adaptativo (MP
 - [Testes, VLC e métricas](#testes-vlc-e-métricas)
 - [Captura de tráfego](#captura-de-tráfego)
 - [Etapa 2 — Indução de degradação e caracterização da QoE](#etapa-2--indução-de-degradação-e-caracterização-da-qoe)
+- [Etapa 3 — Controle via SDN (mitigação de degradação)](#etapa-3--controle-via-sdn-mitigação-de-degradação)
 - [Resultados obtidos](#resultados-obtidos)
 - [Encerrar e limpar](#encerrar-e-limpar)
 - [Ordem resumida](#ordem-resumida)
@@ -64,12 +65,16 @@ O host `h1` executa o servidor HTTP com o conteúdo MPEG-DASH. Os hosts `h2`, `h
 ├── docs/
 │   ├── README_VM.md
 │   ├── relatorio_etapa1.md
-│   └── relatorio_etapa2.md
+│   ├── relatorio_etapa2.md
+│   └── relatorio_etapa3.md
 ├── experiments/
 │   ├── dash_client.py
 │   ├── netimpair.py
+│   ├── qoe_control.py
 │   ├── run_etapa2.py
-│   └── analyze.py
+│   ├── run_etapa3.py
+│   ├── analyze.py
+│   └── analyze_etapa3.py
 ├── media/
 │   ├── input.mp4
 │   └── dash/
@@ -85,15 +90,19 @@ O host `h1` executa o servidor HTTP com o conteúdo MPEG-DASH. Os hosts `h2`, `h
 │   ├── prepare_video.sh
 │   ├── run_metrics.sh
 │   ├── start_controller.sh
+│   ├── start_controller_qoe.sh
 │   ├── start_topology.sh
 │   └── validate_environment.sh
 ├── tests/
 │   ├── test_dash_client.py
 │   ├── test_netimpair.py
+│   ├── test_qoe_control.py
 │   ├── test_analyze.py
 │   └── test_integration_streaming.py
+├── controller/
+│   └── qoe_guard.py         # app POX da Etapa 3 (copiado p/ tools/pox/ext)
 ├── tools/
-│   └── pox/
+│   └── pox/                 # baixado pelo install.sh (ignorado no git)
 ├── topology/
 │   └── topo_dash.py
 ├── cleanup.sh
@@ -412,6 +421,70 @@ mininet> h1 bash scripts/induce_degradation.sh h1-eth0 --bw 3 --delay 100ms --lo
 mininet> h1 bash scripts/induce_degradation.sh h1-eth0 --clear
 mininet> h3 bash scripts/concurrent_traffic.sh 10.0.0.1 60 &
 ```
+
+## Etapa 3 — Controle via SDN (mitigação de degradação)
+
+A Etapa 3 implementa no controlador SDN a **detecção de degradação** e um
+**mecanismo de mitigação** que melhora a QoE sob congestionamento, programando
+**regras OpenFlow dinamicamente** e registrando as decisões em tempo de
+execução. Metodologia completa em
+[`docs/relatorio_etapa3.md`](docs/relatorio_etapa3.md).
+
+### Como funciona
+
+Uma thread `SDNController` (em `run_etapa3.py`) monitora os bytes transmitidos
+no enlace gargalo `s1-eth2` lendo `/sys/class/net/s1-eth2/statistics/tx_bytes`
+a cada 2 s. Quando a utilização ultrapassa 80 % da capacidade:
+
+1. **Regra OpenFlow** instalada dinamicamente via `ovs-ofctl add-flow`:
+   alta prioridade para o tráfego DASH (TCP porta 8000);
+2. **tc HTB** aplicado em `h1-eth0`: garante 8 Mbps ao cliente de vídeo (h2)
+   e limita o tráfego concorrente a 2 Mbps total.
+
+No modo `sem_controle`, a mesma thread registra as leituras sem agir —
+comparação justa com e sem controle. A lógica de decisão é pura e testável
+(`experiments/qoe_control.py`).
+
+### Componentes
+
+```text
+experiments/
+├── qoe_control.py      # lógica pura: detecção, decisão, comandos tc/ovs-ofctl
+├── run_etapa3.py       # orquestra os modos sem_controle vs com_controle
+└── analyze_etapa3.py   # consolida CSV e gera gráficos comparativos
+controller/
+└── qoe_guard.py        # versão POX do controlador (uso manual avançado)
+```
+
+### Executar
+
+```bash
+make video      # gera o conteúdo DASH (se ainda não houver)
+make etapa3     # roda sem_controle e com_controle
+make analyze3   # gera results/etapa3/summary.csv e os gráficos comparativos
+```
+
+Para um único modo:
+
+```bash
+sudo python3 experiments/run_etapa3.py --mode com_controle
+```
+
+### Saídas
+
+```text
+results/etapa3/summary.json     # bruto consolidado (2 modos)
+results/etapa3/summary.csv      # tabela para o relatório
+results/etapa3/decisions.log    # log das decisões do controlador (tempo real)
+results/etapa3/qoe/*.json       # QoE por modo
+results/etapa3/net/*.txt        # ping/iperf por modo
+results/etapa3/plots/cmp_*.png  # gráficos comparativos (sem vs com controle)
+```
+
+### Testes
+
+A lógica da Etapa 3 é coberta por testes que **não exigem Mininet nem root**
+(`tests/test_qoe_control.py`), incluídos em `make test`.
 
 ## Resultados obtidos
 

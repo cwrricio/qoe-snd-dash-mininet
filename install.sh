@@ -78,6 +78,13 @@ else
     exit 1
 fi
 
+# Instala o app de controle da Etapa 3 (versionado em controller/) no ext do POX.
+if [ -f "$PROJECT_DIR/controller/qoe_guard.py" ]; then
+    mkdir -p "$POX_DIR/ext"
+    cp "$PROJECT_DIR/controller/qoe_guard.py" "$POX_DIR/ext/qoe_guard.py"
+    echo "[OK] App de controle (ext.qoe_guard) instalado no POX."
+fi
+
 echo "[7/7] Limpando instâncias antigas do Mininet..."
 sudo mn -c || true
 
