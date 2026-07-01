@@ -1,13 +1,13 @@
 {
   "segments_played": 14,
-  "startup_time_s": 6.666,
+  "startup_time_s": 10.716,
   "rebuffer_events": 0,
   "rebuffer_time_s": 0.0,
   "avg_bitrate_kbps": 1414.3,
   "bitrate_switches": 1,
-  "mean_throughput_mbps": 2.738,
+  "mean_throughput_mbps": 1.778,
   "total_bytes": 24656584,
-  "wall_time_s": 72.048,
+  "wall_time_s": 110.947,
   "representations_kbps": [
     300.0,
     800.0,

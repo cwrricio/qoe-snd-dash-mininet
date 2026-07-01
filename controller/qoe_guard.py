@@ -13,9 +13,9 @@ Estende o encaminhamento L2 com um laco de controle que:
 
 Uso (a partir de tools/pox):
 
-    python3 pox.py ext.qoe_guard                 # com mitigacao (padrao)
-    python3 pox.py ext.qoe_guard --mitigate=False # baseline (so observa)
-    python3 pox.py ext.qoe_guard --bottleneck=s1-eth2 --capacity=10
+    PYTHONPATH=ext python3 pox.py qoe_guard                 # com mitigacao
+    PYTHONPATH=ext python3 pox.py qoe_guard --mitigate=False # baseline
+    PYTHONPATH=ext python3 pox.py qoe_guard --bottleneck=s1-eth2 --capacity=10
 
 Parametros (todos opcionais):
     --mitigate    True/False — habilita a acao de priorizacao (padrao True)

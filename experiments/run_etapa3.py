@@ -98,7 +98,7 @@ class PoxControllerProcess:
         os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
 
         cmd = [
-            "python3", "pox.py", "ext.qoe_guard",
+            "python3", "pox.py", "qoe_guard",
             "--mitigate=%s" % ("True" if self.mitigate else "False"),
             "--capacity=%s" % CAPACITY_MBPS,
             "--bottleneck=%s" % BOTTLENECK_INTF,
@@ -106,8 +106,14 @@ class PoxControllerProcess:
             "--interval=2",
         ]
         log_f = open(self.log_path, "w", encoding="utf-8")
+        env = os.environ.copy()
+        env["PYTHONPATH"] = (
+            os.path.dirname(POX_APP_DST)
+            + os.pathsep + PROJECT_DIR
+            + os.pathsep + env.get("PYTHONPATH", "")
+        )
         self.proc = subprocess.Popen(
-            cmd, cwd=POX_DIR, stdout=log_f, stderr=subprocess.STDOUT)
+            cmd, cwd=POX_DIR, env=env, stdout=log_f, stderr=subprocess.STDOUT)
         self._log_f = log_f
         time.sleep(2)
         if self.proc.poll() is not None:

@@ -38,7 +38,7 @@ echo "[INFO] Deixe este terminal aberto."
 echo ""
 
 cd "$POX_DIR"
-python3 pox.py ext.qoe_guard \
+PYTHONPATH="$POX_DIR/ext:$PROJECT_DIR:${PYTHONPATH:-}" python3 pox.py qoe_guard \
     --mitigate="$MITIGATE" \
     --capacity="$CAPACITY" \
     --bottleneck="$BOTTLENECK" \

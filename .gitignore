@@ -4,6 +4,8 @@ __pycache__/
 .pytest_cache/
 results/**/*.pcap
 results/**/*.txt
+results/etapa3/pox_*.log
+results/etapa3/qos_decisions.log
 media/dash/*
 tools/pox
 .vscode/

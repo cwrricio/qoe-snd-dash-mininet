@@ -20,7 +20,7 @@ O controle de QoE é implementado em três camadas que atuam juntas:
 
 ## Lógica de detecção
 
-A cada 2 segundos, o POX `ext.qoe_guard` envia `ofp_stats_request` e lê
+A cada 2 segundos, o POX `qoe_guard` envia `ofp_stats_request` e lê
 `tx_bytes` da porta gargalo de `s1` para estimar os bytes transmitidos no
 enlace s1→s2 (o caminho de todos os downloads de segmentos). A utilização
 instantânea é calculada como:
@@ -85,8 +85,8 @@ mesmo cenário** em dois modos:
 
 | Modo | Controlador | Ação |
 |------|-------------|------|
-| `sem_controle` | POX `ext.qoe_guard` passivo (`mitigate=False`) | só monitora e registra |
-| `com_controle` | POX `ext.qoe_guard` ativo (`mitigate=True`) | instala regra OpenFlow + HTB no host servidor |
+| `sem_controle` | POX `qoe_guard` passivo (`mitigate=False`) | só monitora e registra |
+| `com_controle` | POX `qoe_guard` ativo (`mitigate=True`) | instala regra OpenFlow + HTB no host servidor |
 
 Cenário: enlace gargalo `s1-eth2` limitado a **10 Mbps** (tc tbf) e
 **2 fluxos iperf** (h1 → h3/h4) concorrentes ao streaming (h1 → h2).

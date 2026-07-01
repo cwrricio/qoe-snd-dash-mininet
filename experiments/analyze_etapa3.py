@@ -127,6 +127,7 @@ def main():
 
     print("\n[RESUMO] Ganho com o controle SDN (sem_controle -> com_controle):")
     for key, label, better in [
+            ("startup_time_s", "Tempo de inicio", "menor"),
             ("rebuffer_time_s", "Tempo de rebuffering", "menor"),
             ("avg_bitrate_kbps", "Bitrate medio", "maior"),
             ("mean_throughput_mbps", "Vazao de download", "maior")]:

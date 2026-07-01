@@ -433,7 +433,7 @@ execução. Metodologia completa em
 ### Como funciona
 
 O alvo `make etapa3` inicia automaticamente o controlador POX
-`ext.qoe_guard` e conecta a topologia Mininet a ele via `RemoteController`.
+`qoe_guard` e conecta a topologia Mininet a ele via `RemoteController`.
 O POX coleta estatísticas OpenFlow da porta gargalo de `s1` a cada 2 s.
 Quando a utilização ultrapassa 80 % da capacidade:
 
