@@ -96,13 +96,19 @@ Cenário: enlace gargalo `s1-eth2` limitado a **10 Mbps** (tc tbf) e
 As métricas de QoE são medidas pelo cliente DASH headless da Etapa 2
 (`dash_client.py`).
 
-Resultado esperado:
+Resultado observado nos artefatos versionados:
 
 | Métrica | `sem_controle` | `com_controle` |
 |---------|---------------|----------------|
-| Bitrate médio | baixo (3–4 Mbps) | alto (≈8 Mbps) |
-| Tempo de rebuffering | alto | baixo/zero |
-| Vazão de download | limitada | próxima do garantido |
+| Bitrate médio | 1414.3 kbps | 1414.3 kbps |
+| Tempo de início | 6.666 s | 2.981 s |
+| Tempo de rebuffering | 0.0 s | 0.0 s |
+| Vazão de download | 2.738 Mbps | 8.271 Mbps |
+
+O cenário reproduzido evidencia ganho principalmente em **tempo de início** e
+**vazão média de download**. O bitrate médio não muda porque o conteúdo DASH
+disponível no experimento tem representações até 1500 kbps, e não houve
+rebuffering em nenhum dos dois modos nessa execução.
 
 `analyze_etapa3.py` consolida os dois modos em CSV e gera gráficos
 comparativos em `results/etapa3/plots/`.
@@ -139,7 +145,7 @@ geração de decisão, construção dos comandos tc HTB e ovs-ofctl, e o cálcul
 de ganho da análise — é coberta por **testes que não exigem Mininet nem root**:
 
 ```bash
-make test   # inclui tests/test_qoe_control.py (22 testes da Etapa 3)
+make test   # inclui testes da logica de controle e do controlador POX
 ```
 
 ## Arquivos da Etapa 3

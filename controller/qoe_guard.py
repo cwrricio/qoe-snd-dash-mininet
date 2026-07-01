@@ -7,9 +7,8 @@ Estende o encaminhamento L2 com um laco de controle que:
   2. calcula a utilizacao do enlace gargalo e detecta congestionamento
      (logica pura em experiments/qoe_control.py);
   3. quando congestionado e com mitigacao habilitada, instala dinamicamente
-     uma regra OpenFlow de alta prioridade que enfileira o trafego de video
-     (MPEG-DASH, TCP porta 8000) na fila de QoS prioritaria do switch
-     (acao enqueue), protegendo a QoE do streaming;
+     uma regra OpenFlow de alta prioridade que encaminha o trafego de video
+     (MPEG-DASH, TCP porta 8000) pela porta gargalo conhecida;
   4. registra cada decisao em results/etapa3/decisions.log.
 
 Uso (a partir de tools/pox):
@@ -153,15 +152,17 @@ class QoEGuard(object):
         else:
             if self._mitigating:
                 self._mitigating = False
+                self._remove_dash_priority()
                 log.info("Enlace normalizado (util=%.2f Mbps)",
                          decision["util_mbps"])
 
     def _install_dash_priority(self):
-        """Instala regra OpenFlow que enfileira o video na fila prioritaria.
+        """Instala regra OpenFlow de alta prioridade para o video.
 
         Casa o trafego TCP cuja porta de origem e a porta HTTP do DASH (8000),
-        ou seja, os segmentos de video saindo do servidor, e o envia para a
-        fila de QoS de alta prioridade na porta gargalo (enqueue).
+        ou seja, os segmentos de video saindo do servidor, e o encaminha pela
+        porta gargalo conhecida. A priorizacao por banda do experimento
+        reproduzivel fica no `tc HTB` aplicado por experiments/run_etapa3.py.
         """
         port_no = self.opts["port"]
         msg = of.ofp_flow_mod()
@@ -169,8 +170,16 @@ class QoEGuard(object):
         msg.match.dl_type = 0x0800       # IPv4
         msg.match.nw_proto = 6           # TCP
         msg.match.tp_src = qoe_control.DASH_PORT
-        msg.actions.append(
-            of.ofp_action_enqueue(port=port_no, queue_id=qoe_control.DASH_QUEUE))
+        msg.actions.append(of.ofp_action_output(port=port_no))
+        self.connection.send(msg)
+
+    def _remove_dash_priority(self):
+        """Remove a regra de priorizacao instalada pelo controlador."""
+        msg = of.ofp_flow_mod(command=of.OFPFC_DELETE)
+        msg.priority = 30000
+        msg.match.dl_type = 0x0800
+        msg.match.nw_proto = 6
+        msg.match.tp_src = qoe_control.DASH_PORT
         self.connection.send(msg)
 
     def _record(self, port_no, decision):

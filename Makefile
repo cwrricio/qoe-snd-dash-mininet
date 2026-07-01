@@ -1,3 +1,5 @@
+PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,python3)
+
 .PHONY: install validate video controller topology capture etapa2 analyze etapa3 analyze3 test clean
 
 install:
@@ -26,21 +28,21 @@ etapa2:
 
 # Etapa 2: consolida resultados em CSV e gera os gráficos.
 analyze:
-	python3 experiments/analyze.py
+	MPLCONFIGDIR=/tmp/qoe_mpl $(PYTHON) experiments/analyze.py
 
 # Etapa 3: controle via SDN. Roda os modos sem_controle e com_controle
-# (sobe o POX ext.qoe_guard automaticamente) e compara a QoE.
+# usando o orquestrador reproduzivel com thread SDNController.
 etapa3:
 	sudo python3 -B experiments/run_etapa3.py
 
 # Etapa 3: consolida baseline vs. controle em CSV e gera os gráficos.
 analyze3:
-	python3 experiments/analyze_etapa3.py
+	MPLCONFIGDIR=/tmp/qoe_mpl $(PYTHON) experiments/analyze_etapa3.py
 
 # Testes (TDD). Não exigem root nem Mininet; os testes de integração com
 # ffmpeg são pulados automaticamente se não houver ffmpeg disponível.
 test:
-	python3 -m pytest tests/ -v
+	PYTHONPYCACHEPREFIX=/tmp/qoe_pycache MPLCONFIGDIR=/tmp/qoe_mpl $(PYTHON) -m pytest tests/ -v
 
 clean:
 	./cleanup.sh

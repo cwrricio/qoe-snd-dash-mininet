@@ -445,6 +445,11 @@ No modo `sem_controle`, a mesma thread registra as leituras sem agir —
 comparação justa com e sem controle. A lógica de decisão é pura e testável
 (`experiments/qoe_control.py`).
 
+O app POX `controller/qoe_guard.py` fica disponível para execução manual via
+`scripts/start_controller_qoe.sh`; o caminho reproduzível da entrega é o
+orquestrador `make etapa3`, que sobe a topologia, aplica o gargalo, executa os
+dois modos e coleta os resultados.
+
 ### Componentes
 
 ```text
@@ -462,6 +467,7 @@ controller/
 make video      # gera o conteúdo DASH (se ainda não houver)
 make etapa3     # roda sem_controle e com_controle
 make analyze3   # gera results/etapa3/summary.csv e os gráficos comparativos
+make test       # valida a lógica pura e a integridade do controlador POX
 ```
 
 Para um único modo:
@@ -485,6 +491,14 @@ results/etapa3/plots/cmp_*.png  # gráficos comparativos (sem vs com controle)
 
 A lógica da Etapa 3 é coberta por testes que **não exigem Mininet nem root**
 (`tests/test_qoe_control.py`), incluídos em `make test`.
+
+Se estiver fora da VM preparada por `make install`, crie um ambiente local:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+make test
+```
 
 ## Resultados obtidos
 

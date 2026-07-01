@@ -42,6 +42,8 @@ sudo apt-get install -y \
     openvswitch-switch \
     openvswitch-testcontroller \
     python3 \
+    python3-pip \
+    python3-venv \
     ffmpeg \
     vlc \
     iperf \
@@ -50,7 +52,8 @@ sudo apt-get install -y \
     net-tools \
     curl \
     make \
-    python3-matplotlib
+    python3-matplotlib \
+    python3-pytest
 
 echo "[3/7] Configurando Open vSwitch..."
 sudo systemctl enable openvswitch-switch

@@ -12,6 +12,7 @@ Pulado automaticamente se não houver ffmpeg ou media/input.mp4.
 import functools
 import http.server
 import os
+import socket
 import subprocess
 import threading
 import time
@@ -33,9 +34,18 @@ def _ffmpeg_exe():
         return which("ffmpeg")
 
 
+def _can_bind_localhost():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+        return True
+    except OSError:
+        return False
+
+
 pytestmark = pytest.mark.skipif(
-    not os.path.exists(INPUT) or _ffmpeg_exe() is None,
-    reason="requer media/input.mp4 e um ffmpeg disponível",
+    not os.path.exists(INPUT) or _ffmpeg_exe() is None or not _can_bind_localhost(),
+    reason="requer media/input.mp4, ffmpeg e permissao para abrir localhost",
 )
 
 
