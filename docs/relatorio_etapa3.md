@@ -9,21 +9,21 @@ cada decisão tomada em tempo de execução.
 
 ## Visão geral da solução
 
-O controle de QoE é implementado em duas camadas que atuam juntas:
+O controle de QoE é implementado em três camadas que atuam juntas:
 
 | Camada | Componente | Função |
 |--------|------------|--------|
-| Monitoramento | `SDNController` thread (em `run_etapa3.py`) | Lê contadores de bytes do enlace gargalo periodicamente, calcula utilização e decide a ação |
+| Controlador SDN | `controller/qoe_guard.py` (POX) | Coleta estatísticas OpenFlow, calcula utilização e decide a ação |
 | Decisão | `experiments/qoe_control.py` (funções puras) | Calcula utilização, detecta congestionamento, gera estrutura de decisão |
-| Ação SDN | `ovs-ofctl add-flow` em s1 | Instala regra OpenFlow de alta prioridade para o fluxo DASH (TCP porta 8000) |
-| Ação de QoS | `tc HTB` em h1-eth0 | Garante banda mínima ao cliente DASH (h2) e limita o tráfego concorrente |
+| Ação SDN | POX `ofp_flow_mod` em s1 | Instala regra OpenFlow de alta prioridade para o fluxo DASH (TCP porta 8000) |
+| Ação de QoS | `tc HTB` em h1-eth0, aplicado pelo orquestrador | Garante banda mínima ao cliente DASH (h2) e limita o tráfego concorrente |
 
 ## Lógica de detecção
 
-A cada 2 segundos, o `SDNController` lê o arquivo
-`/sys/class/net/s1-eth2/statistics/tx_bytes` para obter os bytes transmitidos
-no enlace gargalo s1→s2 (o caminho de todos os downloads de segmentos). A
-utilização instantânea é calculada como:
+A cada 2 segundos, o POX `ext.qoe_guard` envia `ofp_stats_request` e lê
+`tx_bytes` da porta gargalo de `s1` para estimar os bytes transmitidos no
+enlace s1→s2 (o caminho de todos os downloads de segmentos). A utilização
+instantânea é calculada como:
 
 ```
 util_mbps = (tx_bytes_atual − tx_bytes_anterior) × 8 / (intervalo × 10⁶)
@@ -36,26 +36,22 @@ transborde e provoque perdas ou rebuffering.
 ## Ações de controle
 
 Quando congestionamento é detectado **e** o modo `com_controle` está ativo,
-o `SDNController`:
+o POX:
 
-### 1. Regra OpenFlow via `ovs-ofctl`
+### 1. Regra OpenFlow via `ofp_flow_mod`
 
-```bash
-ovs-ofctl add-flow s1 priority=200,ip,nw_proto=6,tp_src=8000,actions=normal
+```text
+priority=30000, ip, tcp, tp_src=8000, actions=output:2
 ```
 
-Instala dinamicamente uma regra de **alta prioridade** (200 > regras reativas
-padrão ≈ 0–100) que casa o tráfego TCP com porta de origem 8000 (segmentos
-DASH saindo do servidor). A regra é removida quando o congestionamento cede:
-
-```bash
-ovs-ofctl del-flows s1 ip,nw_proto=6,tp_src=8000
-```
+Instala dinamicamente uma regra de **alta prioridade** acima dos fluxos L2
+reativos que casa o tráfego TCP com porta de origem 8000 (segmentos DASH
+saindo do servidor). A regra é removida quando o congestionamento cede.
 
 ### 2. Fila de QoS com `tc HTB` em `h1-eth0`
 
-Cria uma hierarquia de filas no host servidor que garante a banda mínima
-ao cliente de vídeo **antes** que o tráfego chegue ao gargalo:
+O orquestrador aplica uma hierarquia de filas no host servidor que garante a
+banda mínima ao cliente de vídeo **antes** que o tráfego chegue ao gargalo:
 
 ```bash
 tc qdisc add dev h1-eth0 root handle 1: htb default 12
@@ -84,12 +80,13 @@ Cada ciclo de monitoramento gera uma linha em `results/etapa3/decisions.log`:
 
 ## Metodologia de avaliação
 
-O orquestrador `run_etapa3.py` executa **o mesmo cenário** em dois modos:
+O orquestrador `run_etapa3.py` inicia o POX automaticamente e executa **o
+mesmo cenário** em dois modos:
 
 | Modo | Controlador | Ação |
 |------|-------------|------|
-| `sem_controle` | `SDNController` passivo (`mitigate=False`) | só monitora e registra |
-| `com_controle` | `SDNController` ativo (`mitigate=True`) | instala regra OF + aplica HTB |
+| `sem_controle` | POX `ext.qoe_guard` passivo (`mitigate=False`) | só monitora e registra |
+| `com_controle` | POX `ext.qoe_guard` ativo (`mitigate=True`) | instala regra OpenFlow + HTB no host servidor |
 
 Cenário: enlace gargalo `s1-eth2` limitado a **10 Mbps** (tc tbf) e
 **2 fluxos iperf** (h1 → h3/h4) concorrentes ao streaming (h1 → h2).
@@ -132,7 +129,9 @@ sudo python3 experiments/run_etapa3.py --mode com_controle
 ```text
 results/etapa3/summary.json     # bruto consolidado (2 modos)
 results/etapa3/summary.csv      # tabela para o relatório
-results/etapa3/decisions.log    # log das decisões do controlador (tempo real)
+results/etapa3/decisions.log    # log das decisões do POX (tempo real)
+results/etapa3/qos_decisions.log # log da aplicação de HTB no host servidor
+results/etapa3/pox_*.log        # stdout/stderr do POX por modo
 results/etapa3/qoe/*.json       # QoE por modo
 results/etapa3/net/*.txt        # ping/iperf por modo
 results/etapa3/plots/cmp_*.png  # gráficos comparativos
@@ -152,8 +151,10 @@ make test   # inclui testes da logica de controle e do controlador POX
 
 ```text
 experiments/qoe_control.py      # lógica pura: detecção, decisão, comandos tc/ovs-ofctl
-experiments/run_etapa3.py       # orquestrador: gargalo + SDNController + coleta
+experiments/run_etapa3.py       # orquestrador: POX automatico + gargalo + coleta
 experiments/analyze_etapa3.py   # comparação baseline vs controle, gráficos
 controller/qoe_guard.py         # versão POX do controlador (uso manual)
-tests/test_qoe_control.py       # testes TDD (22 casos)
+tests/test_qoe_control.py       # testes da lógica pura
+tests/test_controller_qoe_guard_static.py # integridade do app POX
+tests/test_run_etapa3_static.py # garante POX como padrão do make etapa3
 ```

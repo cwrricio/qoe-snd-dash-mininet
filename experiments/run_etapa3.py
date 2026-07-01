@@ -3,23 +3,21 @@
 
 Compara a QoE do streaming MPEG-DASH sob congestionamento em dois modos:
 
-  - sem_controle: controlador so encaminha (baseline da Etapa 3);
-  - com_controle: controlador detecta congestionamento e prioriza o DASH.
+  - sem_controle: POX ext.qoe_guard so encaminha/monitora;
+  - com_controle: POX ext.qoe_guard detecta congestionamento e instala regra
+    OpenFlow dinamica para priorizar o DASH.
 
 Cenario: enlace gargalo s1-eth2 limitado a CAPACITY_MBPS Mbps (tc tbf) e
 CROSS_FLOWS fluxos iperf concorrentes (h1 -> h3/h4) competindo com o
 streaming (h1 -> h2) durante toda a reproducao.
 
-Laco de controle (classe SDNController, thread separada):
-  1. Coleta periodicamente os bytes transmitidos em s1-eth2 via
-     /sys/class/net/<intf>/statistics/tx_bytes.
-  2. Calcula a utilizacao do enlace usando a logica pura de qoe_control.py.
-  3. Quando congestionado E modo com_controle:
-       a. Aplica tc HTB em h1-eth0: garante 8 Mbps para o cliente DASH (h2)
-          e limita o trafego concorrente a 2 Mbps total.
-       b. Instala uma regra OpenFlow de alta prioridade no switch s1 via
-          ovs-ofctl, marcando o fluxo DASH (TCP porta 8000).
-  4. Registra cada decisao em results/etapa3/decisions.log.
+Fluxo automatico:
+  1. Inicia o controlador POX da Etapa 3 (ext.qoe_guard) no modo correto.
+  2. Sobe a topologia Mininet conectada ao POX via RemoteController.
+  3. Aplica gargalo e trafego concorrente.
+  4. Um agente local aplica tc HTB no host servidor quando ha congestionamento,
+     porque a fila de host Linux nao e configuravel pelo controlador OpenFlow.
+  5. O POX registra as decisoes SDN em results/etapa3/decisions.log.
 
 Executar como root (Mininet exige):
 
@@ -30,6 +28,8 @@ Executar como root (Mininet exige):
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -38,7 +38,7 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_DIR)
 
 from mininet.net import Mininet                                  # noqa: E402
-from mininet.node import OVSController, OVSSwitch               # noqa: E402
+from mininet.node import RemoteController, OVSController, OVSSwitch  # noqa: E402
 from mininet.link import TCLink                                  # noqa: E402
 from mininet.log import setLogLevel, info                        # noqa: E402
 
@@ -62,6 +62,10 @@ RESULTS_DIR = os.path.join(PROJECT_DIR, "results", "etapa3")
 QOE_DIR     = os.path.join(RESULTS_DIR, "qoe")
 NET_DIR     = os.path.join(RESULTS_DIR, "net")
 LOG_PATH    = os.path.join(RESULTS_DIR, "decisions.log")
+QOS_LOG_PATH = os.path.join(RESULTS_DIR, "qos_decisions.log")
+POX_DIR     = os.path.join(PROJECT_DIR, "tools", "pox")
+POX_APP_SRC = os.path.join(PROJECT_DIR, "controller", "qoe_guard.py")
+POX_APP_DST = os.path.join(POX_DIR, "ext", "qoe_guard.py")
 
 MODES = {
     "sem_controle": {"mitigate": False,
@@ -72,11 +76,66 @@ MODES = {
 
 
 # ---------------------------------------------------------------------------
-# Laco de controle SDN (roda em thread separada durante o experimento)
+# Controlador POX automatico
 # ---------------------------------------------------------------------------
 
-class SDNController:
-    """Detecta congestionamento em s1-eth2 e age sobre o streaming DASH."""
+class PoxControllerProcess:
+    """Processo POX ext.qoe_guard usado como controlador SDN da Etapa 3."""
+
+    def __init__(self, mitigate, log_path):
+        self.mitigate = mitigate
+        self.log_path = log_path
+        self.proc = None
+
+    def start(self):
+        pox_py = os.path.join(POX_DIR, "pox.py")
+        if not os.path.exists(pox_py):
+            raise RuntimeError(
+                "POX nao encontrado em %s. Rode 'make install' antes." % POX_DIR)
+
+        os.makedirs(os.path.dirname(POX_APP_DST), exist_ok=True)
+        shutil.copy2(POX_APP_SRC, POX_APP_DST)
+        os.makedirs(os.path.dirname(self.log_path), exist_ok=True)
+
+        cmd = [
+            "python3", "pox.py", "ext.qoe_guard",
+            "--mitigate=%s" % ("True" if self.mitigate else "False"),
+            "--capacity=%s" % CAPACITY_MBPS,
+            "--bottleneck=%s" % BOTTLENECK_INTF,
+            "--port=%s" % BOTTLENECK_PORT,
+            "--interval=2",
+        ]
+        log_f = open(self.log_path, "w", encoding="utf-8")
+        self.proc = subprocess.Popen(
+            cmd, cwd=POX_DIR, stdout=log_f, stderr=subprocess.STDOUT)
+        self._log_f = log_f
+        time.sleep(2)
+        if self.proc.poll() is not None:
+            self._log_f.close()
+            raise RuntimeError(
+                "POX encerrou durante a inicializacao. Veja %s" % self.log_path)
+        info("[INFO] POX ext.qoe_guard iniciado (mitigate=%s, log=%s)\n"
+             % (self.mitigate, self.log_path))
+
+    def stop(self):
+        if self.proc is None:
+            return
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait(timeout=5)
+        self._log_f.close()
+
+
+# ---------------------------------------------------------------------------
+# Agente de QoS de host (roda em thread separada durante o experimento)
+# ---------------------------------------------------------------------------
+
+class HostQoSAgent:
+    """Aplica HTB em h1-eth0 quando o gargalo afeta o streaming DASH."""
 
     POLL_INTERVAL = 2.0
 
@@ -156,18 +215,9 @@ class SDNController:
         h1.cmd("tc filter add dev %s parent 1: protocol ip prio 1 "
                "u32 match ip dst %s/32 flowid 1:11" % (intf, CLIENT_IP))
 
-        # Regra OpenFlow de alta prioridade para o fluxo DASH (porta 8000).
-        s1 = self.net.get("s1")
-        s1.cmd("ovs-ofctl add-flow s1 "
-               "priority=200,ip,nw_proto=6,tp_src=%d,actions=normal"
-               % qoe_control.DASH_PORT)
-
     def _remove_priority(self):
         h1 = self.net.get("h1")
         h1.cmd("tc qdisc del dev h1-eth0 root 2>/dev/null")
-        s1 = self.net.get("s1")
-        s1.cmd("ovs-ofctl del-flows s1 "
-               "ip,nw_proto=6,tp_src=%d" % qoe_control.DASH_PORT)
 
     # --- log ---
 
@@ -204,79 +254,108 @@ def collect_net_metrics(client, net_prefix):
 # Execucao de um modo (sem_controle ou com_controle)
 # ---------------------------------------------------------------------------
 
-def run_mode(mode, client_name="h2", duration_guard=120):
+def run_mode(mode, client_name="h2", duration_guard=120, controller="pox"):
     cfg = MODES[mode]
     info("\n========== Modo: %s ==========\n" % mode)
     info("[INFO] %s\n" % cfg["desc"])
 
-    net = Mininet(topo=DashTopo(), controller=None, switch=OVSSwitch,
-                  link=TCLink, autoSetMacs=True)
-    net.addController("c0", controller=OVSController)
-    net.start()
-    info("[INFO] Aguardando convergencia da rede...\n")
-    net.pingAll()
+    pox = None
+    net = None
+    if controller == "pox":
+        pox_log = os.path.join(RESULTS_DIR, "pox_%s.log" % mode)
+        pox = PoxControllerProcess(cfg["mitigate"], pox_log)
+        pox.start()
 
-    h1     = net.get("h1")
-    s1     = net.get("s1")
-    client = net.get(client_name)
+    try:
+        net = Mininet(topo=DashTopo(), controller=None, switch=OVSSwitch,
+                      link=TCLink, autoSetMacs=True)
+        if controller == "pox":
+            net.addController("c0", controller=RemoteController,
+                              ip="127.0.0.1", port=6633)
+        else:
+            net.addController("c0", controller=OVSController)
+        net.start()
+    except Exception:
+        if net is not None:
+            net.stop()
+        if pox is not None:
+            pox.stop()
+        raise
+    ctrl = None
+    h1 = None
+    s1 = None
+    try:
+        info("[INFO] Aguardando convergencia da rede...\n")
+        net.pingAll()
 
-    # Cria o gargalo de 10 Mbps em s1-eth2 (simula enlace de acesso limitado).
-    s1.cmd("tc qdisc del dev %s root 2>/dev/null" % BOTTLENECK_INTF)
-    s1.cmd("tc qdisc add dev %s root handle 1: tbf "
-           "rate %dmbit burst 32kbit latency 400ms"
-           % (BOTTLENECK_INTF, CAPACITY_MBPS))
-    info("[INFO] Gargalo de %d Mbps aplicado em %s\n"
-         % (CAPACITY_MBPS, BOTTLENECK_INTF))
+        h1     = net.get("h1")
+        s1     = net.get("s1")
+        client = net.get(client_name)
 
-    dash_dir = os.path.join(PROJECT_DIR, "media", "dash")
-    h1.cmd("cd %s && python3 -m http.server %d > /tmp/http_dash.log 2>&1 &"
-           % (dash_dir, HTTP_PORT))
-    h1.cmd("iperf -s -p %d > /tmp/iperf_srv.log 2>&1 &" % IPERF_PORT)
-    time.sleep(1)
+        # Cria o gargalo de 10 Mbps em s1-eth2 (simula enlace de acesso limitado).
+        s1.cmd("tc qdisc del dev %s root 2>/dev/null" % BOTTLENECK_INTF)
+        s1.cmd("tc qdisc add dev %s root handle 1: tbf "
+               "rate %dmbit burst 32kbit latency 400ms"
+               % (BOTTLENECK_INTF, CAPACITY_MBPS))
+        info("[INFO] Gargalo de %d Mbps aplicado em %s\n"
+             % (CAPACITY_MBPS, BOTTLENECK_INTF))
 
-    # Trafego concorrente: h1 envia para h3/h4 via iperf, saturando o gargalo.
-    cross = [net.get(h) for h in ("h3", "h4")][:CROSS_FLOWS]
-    for ch in cross:
-        ch.cmd("iperf -s -p %d > /tmp/iperf_%s.log 2>&1 &"
-               % (IPERF_PORT, ch.name))
-    time.sleep(1)
-    for ch in cross:
-        h1.cmd("iperf -c %s -p %d -t %d > /tmp/cross_%s.log 2>&1 &"
-               % (ch.IP(), IPERF_PORT, duration_guard, ch.name))
-    info("[INFO] Trafego concorrente (h1 -> %s) iniciado.\n"
-         % ", ".join(c.name for c in cross))
+        dash_dir = os.path.join(PROJECT_DIR, "media", "dash")
+        h1.cmd("cd %s && python3 -m http.server %d > /tmp/http_dash.log 2>&1 &"
+               % (dash_dir, HTTP_PORT))
+        h1.cmd("iperf -s -p %d > /tmp/iperf_srv.log 2>&1 &" % IPERF_PORT)
+        time.sleep(1)
 
-    # Inicia o laco de controle SDN.
-    ctrl = SDNController(net, cfg["mitigate"], CAPACITY_MBPS, LOG_PATH)
-    ctrl.start()
-    time.sleep(3)  # deixa o congestionamento e o controle se estabelecerem
+        # Trafego concorrente: h1 envia para h3/h4 via iperf, saturando o gargalo.
+        cross = [net.get(h) for h in ("h3", "h4")][:CROSS_FLOWS]
+        for ch in cross:
+            ch.cmd("iperf -s -p %d > /tmp/iperf_%s.log 2>&1 &"
+                   % (IPERF_PORT, ch.name))
+        time.sleep(1)
+        for ch in cross:
+            h1.cmd("iperf -c %s -p %d -t %d > /tmp/cross_%s.log 2>&1 &"
+                   % (ch.IP(), IPERF_PORT, duration_guard, ch.name))
+        info("[INFO] Trafego concorrente (h1 -> %s) iniciado.\n"
+             % ", ".join(c.name for c in cross))
 
-    net_prefix  = os.path.join(NET_DIR, mode)
-    net_metrics = collect_net_metrics(client, net_prefix)
-    info("[INFO] Rede: RTT=%s ms, perda=%s%%, vazao=%s Mbps\n"
-         % (net_metrics["rtt_avg_ms"], net_metrics["loss_pct"],
-            net_metrics["throughput_mbps"]))
+        # Inicia o agente de QoS de host usado pela mitigacao da Etapa 3.
+        qos_log = QOS_LOG_PATH if controller == "pox" else LOG_PATH
+        ctrl = HostQoSAgent(net, cfg["mitigate"], CAPACITY_MBPS, qos_log)
+        ctrl.start()
+        time.sleep(3)  # deixa o congestionamento e a mitigacao se estabelecerem
 
-    qoe_out = os.path.join(QOE_DIR, mode + ".json")
-    info("[INFO] Executando cliente DASH...\n")
-    client.cmd("python3 %s --url %s --out %s --timeout 20"
-               % (os.path.join(PROJECT_DIR, "experiments", "dash_client.py"),
-                  MPD_URL, qoe_out))
+        net_prefix  = os.path.join(NET_DIR, mode)
+        net_metrics = collect_net_metrics(client, net_prefix)
+        info("[INFO] Rede: RTT=%s ms, perda=%s%%, vazao=%s Mbps\n"
+             % (net_metrics["rtt_avg_ms"], net_metrics["loss_pct"],
+                net_metrics["throughput_mbps"]))
 
-    qoe = {}
-    if os.path.exists(qoe_out):
-        with open(qoe_out) as f:
-            qoe = json.load(f)
-        info("[INFO] QoE: inicio=%ss, rebuffer=%s eventos/%ss, bitrate=%s kbps\n"
-             % (qoe.get("startup_time_s"), qoe.get("rebuffer_events"),
-                qoe.get("rebuffer_time_s"), qoe.get("avg_bitrate_kbps")))
-    else:
-        info("[WARN] Cliente DASH nao gerou saida.\n")
+        qoe_out = os.path.join(QOE_DIR, mode + ".json")
+        info("[INFO] Executando cliente DASH...\n")
+        client.cmd("python3 %s --url %s --out %s --timeout 20"
+                   % (os.path.join(PROJECT_DIR, "experiments", "dash_client.py"),
+                      MPD_URL, qoe_out))
 
-    ctrl.stop()
-    h1.cmd("pkill -f 'iperf -c' 2>/dev/null")
-    s1.cmd("tc qdisc del dev %s root 2>/dev/null" % BOTTLENECK_INTF)
-    net.stop()
+        qoe = {}
+        if os.path.exists(qoe_out):
+            with open(qoe_out) as f:
+                qoe = json.load(f)
+            info("[INFO] QoE: inicio=%ss, rebuffer=%s eventos/%ss, bitrate=%s kbps\n"
+                 % (qoe.get("startup_time_s"), qoe.get("rebuffer_events"),
+                    qoe.get("rebuffer_time_s"), qoe.get("avg_bitrate_kbps")))
+        else:
+            info("[WARN] Cliente DASH nao gerou saida.\n")
+    finally:
+        if ctrl is not None:
+            ctrl.stop()
+        if h1 is not None:
+            h1.cmd("pkill -f 'iperf -c' 2>/dev/null")
+        if s1 is not None:
+            s1.cmd("tc qdisc del dev %s root 2>/dev/null" % BOTTLENECK_INTF)
+        if net is not None:
+            net.stop()
+        if pox is not None:
+            pox.stop()
 
     return {
         "mode": mode,
@@ -287,6 +366,7 @@ def run_mode(mode, client_name="h2", duration_guard=120):
             "dash_min_mbps":  DASH_MIN_MBPS,
             "cross_flows":    CROSS_FLOWS,
             "bottleneck":     BOTTLENECK_INTF,
+            "controller":     controller,
         },
         "net": net_metrics,
         "qoe": qoe,
@@ -304,6 +384,9 @@ def main():
                     help="Roda apenas um modo (padrao: ambos)")
     ap.add_argument("--client", default="h2",
                     help="Host cliente que reproduz o video")
+    ap.add_argument("--controller", choices=["pox", "ovs"], default="pox",
+                    help="pox = ext.qoe_guard automatico (padrao da Etapa 3); "
+                         "ovs = controlador embutido, apenas para depuracao")
     args = ap.parse_args()
 
     os.makedirs(QOE_DIR, exist_ok=True)
@@ -316,7 +399,8 @@ def main():
     modes = [args.mode] if args.mode else list(MODES)
     results = {}
     for mode in modes:
-        results[mode] = run_mode(mode, client_name=args.client)
+        results[mode] = run_mode(mode, client_name=args.client,
+                                 controller=args.controller)
 
     # Mescla com summary.json existente.
     summary_path = os.path.join(RESULTS_DIR, "summary.json")
@@ -333,6 +417,7 @@ def main():
     info("\n[OK] Resumo salvo em %s\n" % summary_path)
 
     restore_ownership(os.path.join(PROJECT_DIR, "results"))
+    restore_ownership(os.path.dirname(POX_APP_DST))
 
 
 if __name__ == "__main__":

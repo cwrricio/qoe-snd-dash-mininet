@@ -432,33 +432,34 @@ execução. Metodologia completa em
 
 ### Como funciona
 
-Uma thread `SDNController` (em `run_etapa3.py`) monitora os bytes transmitidos
-no enlace gargalo `s1-eth2` lendo `/sys/class/net/s1-eth2/statistics/tx_bytes`
-a cada 2 s. Quando a utilização ultrapassa 80 % da capacidade:
+O alvo `make etapa3` inicia automaticamente o controlador POX
+`ext.qoe_guard` e conecta a topologia Mininet a ele via `RemoteController`.
+O POX coleta estatísticas OpenFlow da porta gargalo de `s1` a cada 2 s.
+Quando a utilização ultrapassa 80 % da capacidade:
 
-1. **Regra OpenFlow** instalada dinamicamente via `ovs-ofctl add-flow`:
+1. **Regra OpenFlow** instalada dinamicamente pelo POX:
    alta prioridade para o tráfego DASH (TCP porta 8000);
-2. **tc HTB** aplicado em `h1-eth0`: garante 8 Mbps ao cliente de vídeo (h2)
-   e limita o tráfego concorrente a 2 Mbps total.
+2. **tc HTB** aplicado pelo orquestrador em `h1-eth0`: garante 8 Mbps ao
+   cliente de vídeo (h2) e limita o tráfego concorrente a 2 Mbps total.
 
-No modo `sem_controle`, a mesma thread registra as leituras sem agir —
+No modo `sem_controle`, o mesmo POX registra as leituras sem agir —
 comparação justa com e sem controle. A lógica de decisão é pura e testável
-(`experiments/qoe_control.py`).
+(`experiments/qoe_control.py`). O HTB fica no orquestrador porque é uma fila
+Linux do host servidor, fora da superfície configurável por OpenFlow.
 
-O app POX `controller/qoe_guard.py` fica disponível para execução manual via
-`scripts/start_controller_qoe.sh`; o caminho reproduzível da entrega é o
-orquestrador `make etapa3`, que sobe a topologia, aplica o gargalo, executa os
-dois modos e coleta os resultados.
+O app POX também fica disponível para execução manual via
+`scripts/start_controller_qoe.sh`; o caminho reproduzível da entrega é
+`make etapa3`.
 
 ### Componentes
 
 ```text
 experiments/
 ├── qoe_control.py      # lógica pura: detecção, decisão, comandos tc/ovs-ofctl
-├── run_etapa3.py       # orquestra os modos sem_controle vs com_controle
+├── run_etapa3.py       # sobe POX e orquestra sem_controle vs com_controle
 └── analyze_etapa3.py   # consolida CSV e gera gráficos comparativos
 controller/
-└── qoe_guard.py        # versão POX do controlador (uso manual avançado)
+└── qoe_guard.py        # app POX usado automaticamente no make etapa3
 ```
 
 ### Executar
@@ -481,7 +482,9 @@ sudo python3 experiments/run_etapa3.py --mode com_controle
 ```text
 results/etapa3/summary.json     # bruto consolidado (2 modos)
 results/etapa3/summary.csv      # tabela para o relatório
-results/etapa3/decisions.log    # log das decisões do controlador (tempo real)
+results/etapa3/decisions.log    # log das decisões do POX (tempo real)
+results/etapa3/qos_decisions.log # log da aplicação de HTB no host servidor
+results/etapa3/pox_*.log        # stdout/stderr do POX por modo
 results/etapa3/qoe/*.json       # QoE por modo
 results/etapa3/net/*.txt        # ping/iperf por modo
 results/etapa3/plots/cmp_*.png  # gráficos comparativos (sem vs com controle)

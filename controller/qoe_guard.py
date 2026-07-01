@@ -175,7 +175,8 @@ class QoEGuard(object):
 
     def _remove_dash_priority(self):
         """Remove a regra de priorizacao instalada pelo controlador."""
-        msg = of.ofp_flow_mod(command=of.OFPFC_DELETE)
+        msg = of.ofp_flow_mod()
+        msg.command = of.OFPFC_DELETE
         msg.priority = 30000
         msg.match.dl_type = 0x0800
         msg.match.nw_proto = 6

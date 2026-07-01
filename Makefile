@@ -30,8 +30,8 @@ etapa2:
 analyze:
 	MPLCONFIGDIR=/tmp/qoe_mpl $(PYTHON) experiments/analyze.py
 
-# Etapa 3: controle via SDN. Roda os modos sem_controle e com_controle
-# usando o orquestrador reproduzivel com thread SDNController.
+# Etapa 3: controle via SDN. Sobe o POX ext.qoe_guard automaticamente,
+# roda os modos sem_controle e com_controle e compara a QoE.
 etapa3:
 	sudo python3 -B experiments/run_etapa3.py
 
